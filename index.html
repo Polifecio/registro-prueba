@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e6a54">
+<title>Registro de prueba</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{--bg:#eef1ef;--surface:#fff;--ink:#13201b;--muted:#566660;--line:#d3dbd7;--accent:#0e6a54;--accent-ink:#fff;--neg:#a8341f;--warn:#8a5a00;--warn-bg:#f6ead2;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1513;--surface:#16211e;--ink:#e6eeea;--muted:#92a39c;--line:#27332f;--accent:#4cc2a0;--accent-ink:#06150f;--neg:#ee8d78;--warn:#e8c06b;--warn-bg:#2d2610}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--sans);padding:20px 16px 40px}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:1.3rem;margin:0}
+.estado{font-size:.8rem;color:var(--muted)}
+.estado.pend{color:var(--warn);background:var(--warn-bg);padding:3px 10px;border-radius:999px;width:fit-content}
+.btn{font:inherit;font-weight:500;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:14px;cursor:pointer;width:100%}
+.btn.prim{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-size:1.05rem}
+ul{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+li{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+li:last-child{border-bottom:0}
+.num{font-family:var(--mono)}
+.sub{font-size:.78rem;color:var(--muted)}
+.tag{font-size:.72rem;padding:1px 8px;border-radius:999px}
+.tag.ok{color:var(--accent);border:1px solid var(--accent)}
+.tag.pend{color:var(--warn);background:var(--warn-bg)}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+summary{cursor:pointer;font-weight:500}
+label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--muted);margin-top:10px}
+input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}
+.err{color:var(--neg);font-size:.85rem;min-height:1.2em}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Registro de prueba</h1>
+    <div id="estado" class="estado">…</div>
+  </header>
+  <button id="agregar" class="btn prim" type="button">Agregar gasto de prueba</button>
+  <div class="err" id="err"></div>
+  <section>
+    <ul id="lista"></ul>
+  </section>
+  <details id="cfg">
+    <summary>Configuración</summary>
+    <label>Dirección del Apps Script (termina en /exec)<input id="url" type="url" autocomplete="off"></label>
+    <label>Clave<input id="clave" type="text" autocomplete="off"></label>
+    <p style="margin:12px 0 0"><button id="guardarCfg" class="btn" type="button">Guardar configuración</button></p>
+  </details>
+</main>
+<script src="cola.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var MXN = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+  var subiendo = false;
+
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  function hoy() { var d = new Date(); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+  function nuevoId() { return 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function pintar() {
+    return Promise.all([Cola.todas(), Cola.getConfig()]).then(function (r) {
+      var filas = r[0].sort(function (a, b) { return b.creado - a.creado; }), cfg = r[1];
+      var pend = filas.filter(function (f) { return !f.subido; }).length;
+      var e = $('estado');
+      e.className = 'estado' + (pend ? ' pend' : '');
+      e.textContent = !cfg || !cfg.url ? 'Falta configurar (abajo)' :
+        pend ? pend + (pend === 1 ? ' pendiente de subir' : ' pendientes de subir') + (navigator.onLine ? '' : ' · sin conexión') :
+        'Todo subido a la hoja';
+      $('cfg').open = !cfg || !cfg.url;
+      var ul = $('lista'); ul.textContent = '';
+      if (!filas.length) { var li = document.createElement('li'); li.className = 'sub'; li.textContent = 'Aún no hay gastos de prueba.'; ul.appendChild(li); }
+      filas.forEach(function (f) {
+        var li = document.createElement('li'), izq = document.createElement('span'), der = document.createElement('span');
+        izq.innerHTML = '<span class="num"></span><br><span class="sub"></span>';
+        izq.querySelector('.num').textContent = MXN.format(f.monto);
+        izq.querySelector('.sub').textContent = f.fecha + ' · ' + f.id;
+        der.className = 'tag ' + (f.subido ? 'ok' : 'pend');
+        der.textContent = f.subido ? 'en la hoja' : 'pendiente';
+        li.appendChild(izq); li.appendChild(der); ul.appendChild(li);
+      });
+    });
+  }
+
+  function intentarSubir() {
+    if (subiendo || !navigator.onLine) return Promise.resolve();
+    subiendo = true; $('err').textContent = '';
+    return Cola.subir().catch(function (e) {
+      $('err').textContent = e.message === 'clave' ? 'La clave no coincide con la del Apps Script.' : 'No se pudo subir: ' + e.message;
+    }).then(function () { subiendo = false; return pintar(); });
+  }
+
+  function pedirSync() {
+    // Android: Chrome sube solo cuando vuelve la señal, aunque cierres la app.
+    if ('serviceWorker' in navigator) navigator.serviceWorker.ready.then(function (reg) {
+      if (reg.sync) return reg.sync.register('subir');
+    }).catch(function () {});
+  }
+
+  $('agregar').addEventListener('click', function () {
+    var fila = { id: nuevoId(), fecha: hoy(), monto: Math.round((50 + Math.random() * 450) * 100) / 100,
+      origen: 'teléfono (prueba)', creado: Date.now(), subido: false };
+    Cola.agregar(fila).then(pintar).then(function () { pedirSync(); return intentarSubir(); });
+  });
+
+  $('guardarCfg').addEventListener('click', function () {
+    var url = $('url').value.trim(), clave = $('clave').value.trim();
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)) { $('err').textContent = 'La dirección debe empezar con https://script.google.com/ y terminar en /exec.'; return; }
+    if (!clave) { $('err').textContent = 'Escribe la clave.'; return; }
+    Cola.setConfig({ url: url, clave: clave }).then(pintar).then(intentarSubir);
+  });
+
+  Cola.getConfig().then(function (c) { if (c) { $('url').value = c.url; $('clave').value = c.clave; } });
+  window.addEventListener('online', intentarSubir);
+  window.addEventListener('offline', pintar);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) intentarSubir(); });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+    navigator.serviceWorker.addEventListener('message', function (e) { if (e.data === 'actualizar') pintar(); });
+  }
+  pintar().then(intentarSubir);
+})();
+</script>
+</body>
+</html>
