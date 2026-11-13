@@ -18,7 +18,7 @@ var Cola = (function () {
     return abrir().then(function (db) {
       return new Promise(function (res, rej) {
         var t = db.transaction(store, modo), s = t.objectStore(store), out = fn(s);
-        t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
+        t.oncomplete = function () { res(out instanceof IDBRequest ? out.result : out); };
         t.onerror = function () { rej(t.error); };
       });
     });

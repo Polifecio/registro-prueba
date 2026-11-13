@@ -115,7 +115,7 @@ input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--
     Cola.setConfig({ url: url, clave: clave }).then(pintar).then(intentarSubir);
   });
 
-  Cola.getConfig().then(function (c) { if (c) { $('url').value = c.url; $('clave').value = c.clave; } });
+  Cola.getConfig().then(function (c) { if (c && c.url) { $('url').value = c.url; $('clave').value = c.clave || ''; } });
   window.addEventListener('online', intentarSubir);
   window.addEventListener('offline', pintar);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) intentarSubir(); });

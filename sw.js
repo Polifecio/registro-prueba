@@ -1,10 +1,13 @@
 importScripts('cola.js');
 
-var CACHE = 'registro-prueba-v1';
+var CACHE = 'registro-prueba-v2';
 var ARCHIVOS = ['./', 'index.html', 'cola.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ARCHIVOS); }).then(function () { return self.skipWaiting(); }));
+  // cache:'reload' pide los archivos nuevos a internet, no la copia vieja del navegador.
+  e.waitUntil(caches.open(CACHE).then(function (c) {
+    return c.addAll(ARCHIVOS.map(function (u) { return new Request(u, { cache: 'reload' }); }));
+  }).then(function () { return self.skipWaiting(); }));
 });
 
 self.addEventListener('activate', function (e) {
